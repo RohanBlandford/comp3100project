@@ -4,56 +4,60 @@ import java.util.Scanner;
 
 class MyClient{  
 public static void main(String args[])throws Exception{  
+//communication with server
 Socket s=new Socket("localhost",50000);   
-DataOutputStream dout=new DataOutputStream(s.getOutputStream());  
+DataOutputStream dout=new DataOutputStream(s.getOutputStream()); 
 BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
 
-File dsSystemXml = new File("ds-system.xml");
-Scanner xml_in = new Scanner(dsSystemXml);
+//open the ds-system.xml file generated from the config on client start  
+File ds_system_xml = new File("ds-system.xml");
+Scanner xml_in = new Scanner(ds_system_xml);
 
-int coreCount = 0; //last read server core count
-int largestCoreCount = 0; //largest server core count so far
-int numLargest = 0; //number of largest core count servers
-String largestServer = null; //name of largest server
+//variables to keep identify and track the appropriate server for LRR
+int core_count = 0; //last read server core count
+int largest_core_count = 0; //largest server core count so far
+int num_largest_servers = 0; //number of largest core count servers
+String largest_server_name = null; //name of largest server
 String str="";    
 
+//read the file and extract information relating to the correct server
 while (xml_in.hasNextLine()) {
     xml_in.hasNextLine();
     str = xml_in.nextLine();
     // System.out.println(str);
 
-   String[] arrOfStr = str.split(" ");
+   String[] str_split_array = str.split(" ");
 
     if (str.contains("type") == true){
-        coreCount = Integer.parseInt(arrOfStr[5].split("\"")[1]);
-        // System.out.println(coreCount + " " + largestServer);
+        core_count = Integer.parseInt(str_split_array[5].split("\"")[1]);
+        // System.out.println(core_count + " " + largest_server_name);
     }
-    if (coreCount > largestCoreCount) { 
-        largestCoreCount = coreCount;
-        largestServer = arrOfStr[1].split("\"")[1];
-        numLargest = Integer.parseInt(arrOfStr[2].split("\"")[1]);
-        //System.out.println("name & largestCoreCount " + largestServer + " " + largestCoreCount);
+    if (core_count > largest_core_count) { 
+        largest_core_count = core_count;
+        largest_server_name = str_split_array[1].split("\"")[1];
+        num_largest_servers = Integer.parseInt(str_split_array[2].split("\"")[1]);
+        //System.out.println("name & largest_core_count " + largest_server_name + " " + largest_core_count);
     }
 }
 
-str = "";
-String username = System.getProperty("user.name");   
+xml_in.close(); //close the xml file for resource management sake
 
+//Server handshake
 dout.write(("HELO\n").getBytes()); 
 dout.flush();  
 str=in.readLine();  
 // System.out.println("To HELO Server says: "+str); 
 
+String username = System.getProperty("user.name");  
 dout.write(("AUTH " + username + "\n").getBytes()); 
 dout.flush();
 str=in.readLine();  
-
 // System.out.println("To AUTH Server says: "+str); 
-// System.out.println("NumLargest: " + numLargest);
-// System.out.println("Largest server: " + largestServer); 
+// System.out.println("num_largest_servers: " + num_largest_servers);
+// System.out.println("Largest server: " + largest_server_name); 
 
-int i = 0;
-int serverNum = 0;
+int i = 0; //to keep track of number of while loop iterations. Used for job id 
+int server_num = 0; //for assigning jobs to servers when there are more than 1 of the largest server type
 while (str != null){ 
     if (str.equals("NONE") == true){
         break;
@@ -61,27 +65,26 @@ while (str != null){
     dout.write(("REDY\n").getBytes()); 
     dout.flush();
     str=in.readLine();  
-
     // System.out.println("While loop REDY: "+str); 
-    // System.out.println("name & largestCoreCount " + largestServer + " " + largestCoreCount);
+    // System.out.println("name & largest_core_count " + largest_server_name + " " + largest_core_count);
     // System.out.println("While loop str: "+str.split(" ", 0)[0]);
     // System.out.println(str.split(" ", 0)[0].equals("JOBN")); 
     
-    if (str.split(" ", 0)[0].equals("JOBN") == true && serverNum < numLargest) { 
-        dout.write(("SCHD " + i + " " + largestServer + " " + serverNum + "\n").getBytes());
+    if (str.split(" ", 0)[0].equals("JOBN") == true && server_num < num_largest_servers) { 
+        dout.write(("SCHD " + i + " " + largest_server_name + " " + server_num + "\n").getBytes());
         dout.flush();
         str=in.readLine();  
 
         i += 1;
-        serverNum += 1;
-        //System.out.println(serverNum + " " + numLargest);
-        if (serverNum == numLargest){
-            serverNum = 0;
+        server_num += 1;
+        //System.out.println(server_num + " " + num_largest_servers);
+        if (server_num == num_largest_servers){
+            server_num = 0;
         }
         // System.out.println("While loop SCHD: "+str); 
-        // System.out.println( "SCHD " + i + " " + largestServer);
+        // System.out.println( "SCHD " + i + " " + largest_server_name);
         // System.out.println("While loop i: "+ i);  
-        }
+    }
     else if (str.split(" ", 0)[0].equals("JCPL") == true){
         dout.write(("REDY\n").getBytes()); 
         dout.flush();
@@ -89,19 +92,18 @@ while (str != null){
         //System.out.println("JCPL: "+str); 
 
             if (str.split(" ", 0)[0].equals("JOBN") == true) { 
-                dout.write(("SCHD " + i + " " + largestServer + " " + serverNum + "\n").getBytes());
+                dout.write(("SCHD " + i + " " + largest_server_name + " " + server_num + "\n").getBytes());
                 dout.flush(); 
                 str=in.readLine();  
                 i += 1;
-                serverNum += 1;
-                //System.out.println(serverNum + " " + numLargest);
+                server_num += 1;
+                //System.out.println(server_num + " " + num_largest_servers);
 
-                if (serverNum == numLargest){
-                    serverNum = 0;
+                if (server_num == num_largest_servers){
+                    server_num = 0;
                 }   
             }
     }
-        
     else {
         str = null;
         // System.out.println("While loop else"); 
